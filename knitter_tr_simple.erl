@@ -66,7 +66,7 @@ supervisor(Control, Process, Connections) ->
 	    Process ! {self(), toKQML, Mesg},
 	    receive
 		{kqml, KQMLMesg} ->
-		    Control ! {receiveMessage, KQMLMesg}
+		    Control ! {self(), receiveMessage, KQMLMesg}
 	    end,
 	    supervisor(Control, Process, Connections);
 %-------------------- IGNORE ANY OTHER MESSAGES

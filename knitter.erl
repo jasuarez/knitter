@@ -96,18 +96,42 @@ server(Agent_name, All_protocols, Active_protocols, Conversations, Expected_mess
 	    {value, {Receiver, Protocol, From}} = lists:keysearch(From, 3, Conversations),
 	    {value, {Protocol, ProtoPID}} = lists:keysearch(Protocol, 1, Active_protocols),
 	    ProtoPID ! {self(), sendMessage, Message},
-	    case get_param(Message, 'reply_with') of
+	    case get_param(Message, 'reply-with') of
 		{ok, Reply_id} ->
 		    case lists:keymember(From, 1, Expected_messages) of
 			true ->
-			    New_expected = lists:keyreplace(From, 1, Expected_messages, {From, Reply_id});
+			    New_expected = lists:keyreplace(From, 1, Expected_messages, {From, {Receiver, Reply_id}});
 			false ->
-			    New_expected = [{From, Reply_id} | Expected_messages]
+			    New_expected = [{From, {Receiver, Reply_id}} | Expected_messages]
 		    end;
 		undef ->
 		    New_expected = Expected_messages
 	    end,
 	    server(Agent_name, All_protocols, Active_protocols, Conversations, New_expected);
+%-------------------- RECEIVE A KQML MESSAGE FROM REMOTE AGENT
+	{ProtoPID, receiveMessage, Message} ->
+	    {ok, Sender} = get_param(Message, sender),
+	    case get_param(Message, 'in-reply-to') of
+		{ok, In_reply_to} ->
+		    case lists:keysearch({Sender, In_reply_to}, 2, Expected_messages) of
+			{value, {ConvPID, _}} ->
+			    ConvPID ! {self(), receiveMessage, Message},
+			    New_expected = lists:keydelete(ConvPID, 1, Expected_messages),
+			    server(Agent_name, All_protocols, Active_protocols, Conversations, New_expected);
+			false ->
+			    %ConvPID = start_conversation(Conversación-por-defecto, Agent_name, Sender),
+			    %ConvPID ! {self(), receiveMessage, Message},
+			    %New_conversations = [Sender, Protocolo, ConvPID | Conversations],
+			    %server(Agent_name, All_protocols, Active_protocols, New_conversations, Expected_messages),
+			    ok
+		    end;
+		undef ->
+			%ConvPID = start_conversation(Conversación-por-defecto, Agent_name, Sender),
+			%ConvPID ! {self(), receiveMessage, Message},
+			%New_conversations = [Sender, Protocolo, ConvPID | Conversations],
+			%server(Agent_name, All_protocols, Active_protocols, New_conversations, Expected_messages),
+			    ok
+	    end;
 %-------------------- ANY OTHER ERLANG MESSAGE IS DISCARTED
 	_ ->
 	    server(Agent_name, All_protocols, Active_protocols, Conversations, Expected_messages)
