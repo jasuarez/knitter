@@ -12,7 +12,7 @@ toString(Mesg) ->
 
 
 toString([{Perf, Value} | L], StrMesg) ->
-    toString(L, StrMesg ++ " :" ++ atom_to_list(Perf) ++ " (" ++ Value ++ " )");
+    toString(L, StrMesg ++ " :" ++ atom_to_list(Perf) ++ " " ++ Value);
 toString([], StrMesg) ->
     StrMesg.
 
