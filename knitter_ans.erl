@@ -9,7 +9,7 @@
 
 
 start(Ans) ->
-    AnsPID = apply(Ans, start, []),
+    AnsPID = Ans:start(),
     register ('knitter_ans', AnsPID),
     AnsPID.
 

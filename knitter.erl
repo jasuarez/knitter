@@ -62,7 +62,7 @@ get_protocols(Config) ->
 start_protocol(Control, Protocols, Name, Agent) ->
     case lists:keysearch(Name, 1, Protocols) of
 	{value, {Name, Module}} ->
-	    apply(Module, start, [Control, Agent]);
+	    Module:start(Control, Agent);
 	false ->
 	    exit("unable to find protocol module")
     end.
@@ -150,7 +150,7 @@ get_protocol(Agent) ->
 
 
 start_conversation(Conv_module, Local_agent, Remote_agent) ->
-    case catch apply(Conv_module, start, [self(), Local_agent, Remote_agent]) of
+    case catch Conv_module:start(self(), Local_agent, Remote_agent) of
 	ConvPID when pid(ConvPID) ->
 	    ConvPID;
 	_ ->
