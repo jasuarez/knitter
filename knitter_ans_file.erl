@@ -12,7 +12,7 @@ start() ->
 	{ok, Agents} ->
 	    case check_data(Agents) of
 		ok ->
-		    spawn(knitter_ans_simple, server, [Agents]);
+		    spawn(knitter_ans_file, server, [Agents]);
 		error ->
 		    exit("start/0: invalid configuration file")
 	    end;
