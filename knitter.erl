@@ -3,7 +3,7 @@
 -vsn('$Revision$').
 
 -export([start/1]).
--export([server/6]).
+-export([server/5]).
 
 -import(knitter_util, [keyssearch/3, get_param/2]).
 
@@ -11,11 +11,11 @@
 
 start(Agent_name) ->
     Config = load_config(),
-    AnsPID = start_ans(Config),
-    Info = get_agent_info(AnsPID, Agent_name),
+    start_ans(Config),
+    Info = get_agent_info(Agent_name),
     {value, {protocol, Protocol}} = lists:keysearch(protocol, 1, Info),
     List_protocols = get_protocols(Config),
-    Control = spawn(knitter, server, [Agent_name, AnsPID, List_protocols, [], [], []]),
+    Control = spawn(knitter, server, [Agent_name, List_protocols, [], [], []]),
     ProtoPID = start_protocol(Control, List_protocols, Protocol),
     Control ! {listenConnection, Protocol, ProtoPID},
     Control.
@@ -33,18 +33,17 @@ load_config() ->
 start_ans(Config) ->
     case lists:keysearch(ans, 1, Config) of
 	{value, {ans, Module_ANS}} ->
-	    apply(Module_ANS, start, []);
+	    knitter_ans:start(Module_ANS);
 	false ->
 	    exit("no ANS module in configuration file")
     end.
 
 
-get_agent_info(Ans, Agent) ->
-    Ans ! {self(), agentInfo, Agent},
-    receive
-	{ok, Info} ->
+get_agent_info(Agent) ->
+    case knitter_ans:get_info(Agent) of
+	{ans_ok, Info} ->
 	    Info;
-	{error, Reason} ->
+	{ans_error, Reason} ->
 	    exit(Reason)
     end.
 
@@ -68,28 +67,28 @@ start_protocol(Control, Protocols, Name) ->
     end.
 
 
-server(Agent_name, Ans, All_protocols, Active_protocols, Conversations, Expected_messages) ->
+server(Agent_name, All_protocols, Active_protocols, Conversations, Expected_messages) ->
     receive
 %-------------------- ADD A LISTENING CONNECTION
 	{listenConnection, Protocol, ProtoPID} ->
-	    server(Agent_name, Ans, All_protocols, [{Protocol, ProtoPID} | Active_protocols], [{Agent_name, Protocol} | Conversations], Expected_messages);
+	    server(Agent_name, All_protocols, [{Protocol, ProtoPID} | Active_protocols], [{Agent_name, Protocol} | Conversations], Expected_messages);
 %-------------------- CREATE A CONVERSATION
 	{From, createConversation, Conv, With_agent} ->
 	    ConvPID = start_conversation(Conv, Agent_name, With_agent),
 	    case lists:keysearch(With_agent, 1, Conversations) of
 		{value, Some_conv} ->
 		    From ! {ok, ConvPID},
-		    server(Agent_name, Ans, All_protocols, Active_protocols, [{With_agent, element(2, Some_conv)} | Conversations], Expected_messages);
+		    server(Agent_name, All_protocols, Active_protocols, [{With_agent, element(2, Some_conv)} | Conversations], Expected_messages);
 		false ->
-		    Protocol = get_protocol(Ans, With_agent),
+		    Protocol = get_protocol(With_agent),
 		    case lists:keymember(Protocol, 1, Active_protocols) of
 			true ->
 			    From ! {ok, ConvPID},
-			    server(Agent_name, Ans, All_protocols, Active_protocols, [{With_agent, Protocol, ConvPID} | Conversations], Expected_messages);
+			    server(Agent_name, All_protocols, Active_protocols, [{With_agent, Protocol, ConvPID} | Conversations], Expected_messages);
 			false ->
 			    ProtoPID = start_protocol (self(), All_protocols, Protocol),
 			    From ! {ok, ConvPID},
-			    server(Agent_name, Ans, All_protocols, [{Protocol, ProtoPID} | Active_protocols], [{With_agent, Protocol, ConvPID} | Conversations], Expected_messages)
+			    server(Agent_name, All_protocols, [{Protocol, ProtoPID} | Active_protocols], [{With_agent, Protocol, ConvPID} | Conversations], Expected_messages)
 		    end
 	    end;
 %-------------------- SEND A KQML MESSAGE TO PEER
@@ -108,15 +107,15 @@ server(Agent_name, Ans, All_protocols, Active_protocols, Conversations, Expected
 		undef ->
 		    New_expected = Expected_messages
 	    end,
-	    server(Agent_name, Ans, All_protocols, Active_protocols, Conversations, New_expected);
+	    server(Agent_name, All_protocols, Active_protocols, Conversations, New_expected);
 %-------------------- ANY OTHER ERLANG MESSAGE IS DISCARTED
 	_ ->
-	    server(Agent_name, Ans, All_protocols, Active_protocols, Conversations, Expected_messages)
+	    server(Agent_name, All_protocols, Active_protocols, Conversations, Expected_messages)
     end.
 
 
-get_protocol(Ans, Agent) ->
-    Info = get_agent_info(Ans, Agent),
+get_protocol(Agent) ->
+    {ans_ok, Info} = knitter_ans:get_info(Agent),
     case lists:keysearch(protocol, 1, Info) of
 	{value, {protocol, Protocol}} ->
 	    Protocol;

@@ -51,7 +51,7 @@ get_agent_info([], _) ->
 check_data([H | T]) ->
     case {lists:keymember(agent, 1, H), lists:keymember(protocol, 1, H)} of
 	{true, true} ->
-	    checkData(T);
+	    check_data(T);
 	_ ->
 	    error
     end;
