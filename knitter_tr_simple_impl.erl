@@ -32,8 +32,8 @@ server(State) when record(State, server_state) ->
 	    {ok, Receiver} = knitter_mesg:get_param(Mesg, receiver),
 	    case lists:keysearch(Receiver, 3, State#server_state.connections) of
 		{value, {_, ConnectionPID, Receiver}} ->
-		    New_mesg_conv = send_message(ConnectionPID, State#server_state.conversor, Mesg),
-		    server(State#server_state{conversor = New_mesg_conv});
+		    New_mesg_conv = send_message(ConnectionPID, State#server_state.converter, Mesg),
+		    server(State#server_state{converter = New_mesg_conv});
 		false ->
 		    case knitter_ans:get_info(Receiver) of
 			{ans_ok, Info} ->
@@ -42,8 +42,8 @@ server(State) when record(State, server_state) ->
 			    case lists:keysearch({Address, Port}, 1, State#server_state.connections) of
 				{value, {_, Connection}} ->
 				    New_connections = lists:keyreplace(Connection, 2, State#server_state.connections, {{Address, Port}, Connection, Receiver}),
-				    New_mesg_conv = send_message(Connection, State#server_state.conversor, Mesg),
-				    server(State#server_state{conversor = New_mesg_conv, connections = New_connections});
+				    New_mesg_conv = send_message(Connection, State#server_state.converter, Mesg),
+				    server(State#server_state{converter = New_mesg_conv, connections = New_connections});
 				false ->
 				    case make_connection(self(), Address, Port) of
 					{unable_to_connect, Reason} ->
@@ -51,8 +51,8 @@ server(State) when record(State, server_state) ->
 					    server(State);
 					Conn ->
 					    New_connections = [{{Address, Port}, Conn, Receiver} | State#server_state.connections],
-					    New_mesg_conv = send_message(Conn, State#server_state.conversor, Mesg),
-					    server(State#server_state{conversor = New_mesg_conv, connections = New_connections})
+					    New_mesg_conv = send_message(Conn, State#server_state.converter, Mesg),
+					    server(State#server_state{converter = New_mesg_conv, connections = New_connections})
 				    end
 			    end;
 			{ans_error, Reason} ->
@@ -62,7 +62,7 @@ server(State) when record(State, server_state) ->
 	    end;
 %%%-------------------- WE HAVE RECEIVED A MESSAGE FROM AN AGENT
 	{Connection, receiveMessage, Mesg} ->
-	    State#server_state.conversor ! {self(), toKQML, Mesg},
+	    State#server_state.converter ! {self(), toKQML, Mesg},
 	    receive
 		{kqml, KQMLMesg} ->
 		    knitter:receive_message(KQMLMesg),
@@ -70,7 +70,7 @@ server(State) when record(State, server_state) ->
 		{'EXIT', Mesg_conv, _} ->
 		    knitter:error_tr_message_parse(?MODULE, self(), Mesg, "parse from ASCII to KQML failed"),
 		    New_mesg_conv = spawn_link(?MODULE, server_mesg_conv, [self()]),
-		    server(State#server_state{conversor = New_mesg_conv})
+		    server(State#server_state{converter = New_mesg_conv})
 	    end;
 %%%-------------------- A PROCESS HAS DIED
 	{'EXIT', From, Reason} ->
@@ -84,7 +84,7 @@ server(State) when record(State, server_state) ->
 %%%-------------------- STOP THE TRANSPORT PROTOCOL
 	stop ->
 	    exit(State#server_state.listen, kill),
-	    State#server_state.conversor ! stop,
+	    State#server_state.converter ! stop,
 	    Stop_connection = fun({_, ConnectionPID}) ->
 				      ConnectionPID ! stop
 			      end,
@@ -102,7 +102,7 @@ server(Options) ->
     ListenPID = spawn_link(?MODULE, listenIncoming, [self(), Address, Port, ListenSocket]),
     Mesg_convPID = spawn_link(?MODULE, server_mesg_conv, [self()]),
     process_flag(trap_exit, true),
-    server(#server_state{listen = ListenPID, conversor = Mesg_convPID}).
+    server(#server_state{listen = ListenPID, converter = Mesg_convPID}).
 
 
 listenIncoming(Server, Address, Port, LSocket) ->

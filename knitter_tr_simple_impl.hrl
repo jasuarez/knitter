@@ -1,4 +1,4 @@
 -record(server_state, {listen,
-		       conversor,
+		       converter,
 		       connections = []
 		      }).
