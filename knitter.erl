@@ -15,8 +15,10 @@ start(Agent_name) ->
     Info = get_agent_info(AnsPID, Agent_name),
     {value, {protocol, Protocol}} = lists:keysearch(protocol, 1, Info),
     List_protocols = get_protocols(Config),
-    ProtoPID = start_protocol(List_protocols, Protocol),
-    spawn(knitter, server, [Agent_name, AnsPID, List_protocols, [{Protocol, ProtoPID}], [{Agent_name, Protocol}], []]).
+    Control = spawn(knitter, server, [Agent_name, AnsPID, List_protocols, [], [], []]),
+    ProtoPID = start_protocol(Control, List_protocols, Protocol),
+    Control ! {listenConnection, Protocol, ProtoPID},
+    Control.
 
 
 load_config() ->
@@ -57,10 +59,10 @@ get_protocols(Config) ->
     end.
 
 
-start_protocol(Protocols, Name) ->
+start_protocol(Control, Protocols, Name) ->
     case lists:keysearch(Name, 1, Protocols) of
 	{value, {Name, Module}} ->
-	    apply(Module, start, []);
+	    apply(Module, start, [Control]);
 	false ->
 	    exit("unable to find protocol module")
     end.
@@ -68,6 +70,9 @@ start_protocol(Protocols, Name) ->
 
 server(Agent_name, Ans, All_protocols, Active_protocols, Conversations, Expected_messages) ->
     receive
+%-------------------- ADD A LISTENING CONNECTION
+	{listenConnection, Protocol, ProtoPID} ->
+	    server(Agent_name, Ans, All_protocols, [{Protocol, ProtoPID} | Active_protocols], [{Agent_name, Protocol} | Conversations], Expected_messages);
 %-------------------- CREATE A CONVERSATION
 	{From, createConversation, Conv, With_agent} ->
 	    ConvPID = start_conversation(Conv, Agent_name, With_agent),
@@ -82,7 +87,7 @@ server(Agent_name, Ans, All_protocols, Active_protocols, Conversations, Expected
 			    From ! {ok, ConvPID},
 			    server(Agent_name, Ans, All_protocols, Active_protocols, [{With_agent, Protocol, ConvPID} | Conversations], Expected_messages);
 			false ->
-			    ProtoPID = start_protocol (All_protocols, Protocol),
+			    ProtoPID = start_protocol (self(), All_protocols, Protocol),
 			    From ! {ok, ConvPID},
 			    server(Agent_name, Ans, All_protocols, [{Protocol, ProtoPID} | Active_protocols], [{With_agent, Protocol, ConvPID} | Conversations], Expected_messages)
 		    end
