@@ -3,6 +3,7 @@
 -vsn('$Revision$').
 
 -export([keysdelete/3, keyssearch/3]).
+-export([get_param/2, set_param/3]).
 
 
 
