@@ -16,7 +16,7 @@ start(Agent_name) ->
     {value, {protocol, Protocol}} = lists:keysearch(protocol, 1, Info),
     List_protocols = get_protocols(Config),
     Control = spawn(knitter, server, [Agent_name, List_protocols, [], [], []]),
-    ProtoPID = start_protocol(Control, List_protocols, Protocol),
+    ProtoPID = start_protocol(Control, List_protocols, Protocol, Agent_name),
     Control ! {listenConnection, Protocol, ProtoPID},
     Control.
 
@@ -58,10 +58,10 @@ get_protocols(Config) ->
     end.
 
 
-start_protocol(Control, Protocols, Name) ->
+start_protocol(Control, Protocols, Name, Agent) ->
     case lists:keysearch(Name, 1, Protocols) of
 	{value, {Name, Module}} ->
-	    apply(Module, start, [Control]);
+	    apply(Module, start, [Control, Agent]);
 	false ->
 	    exit("unable to find protocol module")
     end.
@@ -86,7 +86,7 @@ server(Agent_name, All_protocols, Active_protocols, Conversations, Expected_mess
 			    From ! {ok, ConvPID},
 			    server(Agent_name, All_protocols, Active_protocols, [{With_agent, Protocol, ConvPID} | Conversations], Expected_messages);
 			false ->
-			    ProtoPID = start_protocol (self(), All_protocols, Protocol),
+			    ProtoPID = start_protocol (self(), All_protocols, Protocol, Agent_name),
 			    From ! {ok, ConvPID},
 			    server(Agent_name, All_protocols, [{Protocol, ProtoPID} | Active_protocols], [{With_agent, Protocol, ConvPID} | Conversations], Expected_messages)
 		    end
