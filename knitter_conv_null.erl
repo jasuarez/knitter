@@ -3,7 +3,7 @@
 -author('$Author$ ').
 -vsn('$Revision$ ').
 
--export([start/2, stop/1, send_message/2, receive_message/2]).
+-export([start/2, stop/1, send_message/2, get_message/2, receive_message/2]).
 
 
 
@@ -21,7 +21,7 @@ send_message(Conversation, Message) ->
     ok.
 
 
-receive_message(Conversation, Timeout) ->
+get_message(Conversation, Timeout) ->
     Id = make_ref(),
     Conversation ! {self(), getMessage, Id, Timeout},
     receive
@@ -30,3 +30,7 @@ receive_message(Conversation, Timeout) ->
 	{no_message, Id, Reason} ->
 	    {no_message, Reason}
     end.
+
+
+receive_message(Conversation, Message) ->
+    Conversation ! {receiveMessage, Message}.

@@ -29,9 +29,13 @@ set_param(KQML_mesg, Param, New_value) ->
     end.
 
 
-set_param(KQML_mesg, Param) ->
-    del_param(KQML_mesg, Param).
+set_param(KQML_mesg, []) ->
+    KQML_mesg;
+set_param(KQML_mesg, [{Param, New_value} | T]) ->
+    set_param(set_param(KQML_mesg, Param, New_value), T).
 
 
+del_param(KQML_mesg, Params) when list(Params) ->
+    lists:foldl(fun(Param, Mesg) -> lists:keydelete(Param, 1, Mesg) end, KQML_mesg, Params);
 del_param(KQML_mesg, Param) ->
     lists:keydelete(Param, 1, KQML_mesg).

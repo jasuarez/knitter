@@ -121,29 +121,30 @@ server(State) ->
 		unable_to_start ->
 		    knitter:error_start_conversation(Conv, "unable to start conversation"),
 		    server(State);
-		ConvPID ->	  
+		ConvPID ->
 		    case lists:keysearch(With_agent, 1, State#server_state.conversations) of
 			{value, Some_conv} ->
 			    From ! {new_conversation, ConvPID},
-			    server(State#server_state{conversations = [{With_agent, element(2, Some_conv)} | State#server_state.conversations]});
+			    server(State#server_state{conversations = [{With_agent, element(2, Some_conv), Conv, ConvPID} | State#server_state.conversations]});
 			false ->
 			    Protocol = get_protocol(With_agent),
 			    case lists:keymember(Protocol, 1, State#server_state.active_protocols) of
 				true ->
 				    From ! {new_conversation, ConvPID},
-				    server(State#server_state{conversations = [{With_agent, Protocol, ConvPID} | State#server_state.conversations]});
+				    server(State#server_state{conversations = [{With_agent, Protocol, Conv, ConvPID} | State#server_state.conversations]});
 				false ->
 				    ProtoPID = start_protocol (State#server_state.protocols, Protocol, State#server_state.name),
 				    From ! {new_conversation, ConvPID},
-				    server(State#server_state{active_protocols = [{Protocol, ProtoPID} | State#server_state.active_protocols], conversations = [{With_agent, Protocol, ConvPID} | State#server_state.conversations]})
+				    server(State#server_state{active_protocols = [{Protocol, ProtoPID} | State#server_state.active_protocols], conversations = [{With_agent, Protocol, Conv, ConvPID} | State#server_state.conversations]})
 			    end
 		    end
 	    end;
 %%%-------------------- SEND A KQML MESSAGE TO PEER
 	{From, sendMessage, Message} ->
-	    {value, {Receiver, Protocol, From}} = lists:keysearch(From, 3, State#server_state.conversations),
+	    {value, {Receiver, Protocol, _, From}} = lists:keysearch(From, 4, State#server_state.conversations),
 	    {value, {Protocol, ProtoPID}} = lists:keysearch(Protocol, 1, State#server_state.active_protocols),
-	    ProtoPID ! {sendMessage, Message},
+	    {value, {Protocol, ProtoMod}} = lists:keysearch(Protocol, 1, State#server_state.protocols),
+	    ProtoMod:send(ProtoPID, Message),
 	    New_expected = case get_param(Message, 'reply-with') of
 			       {ok, Reply_id} ->
 				   case lists:keymember(From, 1, State#server_state.expected_messages) of
@@ -163,7 +164,9 @@ server(State) ->
 		{ok, In_reply_to} ->
 		    case lists:keysearch({Sender, In_reply_to}, 2, State#server_state.expected_messages) of
 			{value, {ConvPID, _}} ->
-			    ConvPID ! {receiveMessage, Message},
+			    {value, {_, _, Conv_module, _}} = lists:keysearch(ConvPID, 1, State#server_state.conversations),
+			    Conv_module:receive_message(ConvPID, Message),
+			    %%ConvPID ! {receiveMessage, Message},
 			    New_expected = lists:keydelete(ConvPID, 1, State#server_state.expected_messages),
 			    server(State#server_state{expected_messages = New_expected});
 			false ->
@@ -180,10 +183,11 @@ server(State) ->
 			    {value, Proto_mod} = lists:keysearch(Proto_name, 1, State#server_state.protocols),
 			    knitter:error_incomming_conversation(Proto_name, Proto_mod, Message, "anybody waits for a new conversation"),
 			    server(State);
-			{new_conversation, ConvPID} ->
-			    ConvPID ! {receiveMessage, Message},
+			{new_conversation, ConvMod, ConvPID} ->
+			    ConvMod:receive_message(ConvPID, Message),
+			    %%ConvPID ! {receiveMessage, Message},
 			    {value, Protocol} = lists:keysearch(ProtoPID, 2, State#server_state.active_protocols),
-			    New_conversations = [{Sender, Protocol, ConvPID} | State#server_state.conversations],
+			    New_conversations = [{Sender, Protocol, ConvMod, ConvPID} | State#server_state.conversations],
 			    server(State#server_state{conversations = New_conversations})
 		    end
 	    end;
@@ -193,15 +197,18 @@ server(State) ->
 	    State#server_state.waiter_conv ! stop,
 	    Stop_conv = fun (Element) ->
 				case Element of
-				    {_, _, ConvPID} ->
-					ConvPID ! stop;
+				    {_, _, Conv_module, ConvPID} ->
+					Conv_module:stop(ConvPID);
+					%%ConvPID ! stop;
 				    _ ->
 					ok
 				end
 			end,
 	    lists:foreach(Stop_conv, State#server_state.conversations),
-	    Stop_prot = fun ({_, ProtoPID}) ->
-				ProtoPID ! stop
+	    Stop_prot = fun ({Protocol, ProtoPID}) ->
+				{value, {Protocol, ProtoMod}} = lists:keysearch(Protocol, 1, State#server_state.protocols),
+				ProtoMod:stop(ProtoPID)
+				%%ProtoPID ! stop
 			end,
 	    lists:foreach(Stop_prot, State#server_state.active_protocols),
 	    exit(normal);
@@ -331,7 +338,7 @@ wait_incomming_conv(Client, Conv_module, Timeout) ->
 		    knitter:error_start_conversation(Conv_module, "unable to start conversation");
 		ConvPID ->
 		    Client ! {new_conversation, ConvPID},
-		    knitter ! {new_conversation, ConvPID}
+		    knitter ! {new_conversation, Conv_module, ConvPID}
 	    end,
 	    wait_no_incomming_conv();
 	{wait_conv, New_client, New_conv_module, New_timeout} ->
