@@ -4,22 +4,24 @@
 -vsn('$Revision$ ').
 
 -export([start/1]).
--export([server/2]).
+-export([server/1]).
 -export([keysdelete/3, keyssearch/3]).
+
+-include("knitter_util.hrl").
 
 
 
 start(Prefix) ->
-    spawn(knitter_util, server, [Prefix, 1]).
+    spawn(?MODULE, server, [#server_state{prefix = Prefix}]).
 
 
-server(Prefix, Counter) ->
+server(State) ->
     receive
 	{From, get_new_id} ->
-	    From ! {new_id, Prefix ++ integer_to_list(Counter)},
-	    server(Prefix, Counter + 1);
+	    From ! {new_id, State#server_state.prefix ++ integer_to_list(State#server_state.counter)},
+	    server(State#server_state{counter = State#server_state.counter + 1});
 	_ ->
-	    server(Prefix, Counter)
+	    server(State)
     end.
 
 

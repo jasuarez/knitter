@@ -6,6 +6,8 @@
 -export([start/0]).
 -export([server/1]).
 
+-include("knitter_ans_file.hrl").
+
 
 
 start() ->
@@ -13,7 +15,7 @@ start() ->
 	{ok, Agents} ->
 	    case check_data(Agents) of
 		ok ->
-		    spawn(knitter_ans_file, server, [Agents]);
+		    spawn(?MODULE, server, [#server_state{agents = Agents}]);
 		error ->
 		    exit("start/0: invalid configuration file")
 	    end;
@@ -22,18 +24,18 @@ start() ->
     end.
 
 
-server(Agents) ->
+server(State) ->
     receive
 	{From, get_info, Agent} ->
-	    case get_agent_info(Agents, Agent) of
+	    case get_agent_info(State#server_state.agents, Agent) of
 		[] ->
 		    From ! {ans_error, "Unknown agent"};
 		Info ->
 		    From ! {ans_ok, Info}
 	    end,
-	    server(Agents);
+	    server(State);
 	_ ->
-	    server(Agents)
+	    server(State)
     end.
 
 

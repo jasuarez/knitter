@@ -3,7 +3,7 @@
 -author('$Author$ ').
 -vsn('$Revision$ ').
 
--export([new/0, get_param/2, set_param/3]).
+-export([new/0, get_param/2, set_param/3, set_param/2, del_param/2]).
 
 
 
@@ -22,3 +22,11 @@ get_param(KQML_mesg, Param) ->
 
 set_param(KQML_mesg, Param, New_value) ->
     lists:keyreplace(Param, 1, KQML_mesg, {Param, New_value}).
+
+
+set_param(KQML_mesg, Param) ->
+    del_param(KQML_mesg, Param).
+
+
+del_param(KQML_mesg, Param) ->
+    lists:keydelete(Param, 1, KQML_mesg).
