@@ -4,16 +4,21 @@
 -vsn('$Revision$ ').
 
 
--export([start/1, listen/1, listen/2, start_conversation/2]).
+-export([start/1, stop/0, listen/1, listen/2, start_conversation/2]).
 -export([send_message/1, receive_message/1]).
 -export([error_ans_other/2]).
 -export([error_tr_message_parse/4, error_tr_agent_info/4, error_tr_connect/5, error_tr_other/3]).
--export([error_unexpected_message/4, error_start_protocol/2, error_incomming_connection/4, error_other/1]).
+-export([error_unexpected_message/4, error_start_conversation/2, error_start_protocol/2, error_incomming_connection/4, error_other/1]).
 
 
 
 start(Agent_name) ->
     knitter_impl:start(Agent_name).
+
+
+stop() ->
+    knitter ! stop,
+    ok.
 
 
 listen(Conversation_module) ->
@@ -44,8 +49,8 @@ send_message(Message) ->
 
 
 receive_message(Message) ->
-	knitter ! {self(), receiveMessage, Message},
-	ok.
+    knitter ! {self(), receiveMessage, Message},
+    ok.
 
 
 error_ans_other(ANS_Mod, Reason) ->
@@ -72,8 +77,12 @@ error_unexpected_message(TR_Mod, TR_PID, Message, Reason) ->
     knitter ! {error, unexpected_message, [TR_Mod, TR_PID, Message, Reason]}.
 
 
+error_start_conversation(Conv_Mod, Reason) ->
+    knitter ! {error, start_conversation, [Conv_Mod, Reason]}.
+
+
 error_start_protocol(TR_Mod, Reason) ->
-    knitter ! {error, unexpected_message, [TR_Mod, Reason]}.
+    knitter ! {error, start_protocol, [TR_Mod, Reason]}.
 
 
 error_incomming_connection(TR_Mod, TR_PID, Message, Reason) ->

@@ -3,7 +3,7 @@
 -author('$Author$ ').
 -vsn('$Revision$ ').
 
--export([start/1]).
+-export([start/1, stop/0]).
 -export([get_info/1]).
 
 
@@ -12,6 +12,13 @@ start(Ans) ->
     AnsPID = Ans:start(),
     register ('knitter_ans', AnsPID),
     AnsPID.
+
+
+stop() ->
+    ANS = whereis(knitter_ans),
+    unregister(knitter_ans),
+    ANS ! stop,
+    ok.
 
 
 get_info(Agent) ->

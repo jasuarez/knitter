@@ -34,6 +34,8 @@ server(State) ->
 		    From ! {ans_ok, Info}
 	    end,
 	    server(State);
+	stop ->
+	    exit(normal);
 	_ ->
 	    server(State)
     end.

@@ -4,6 +4,7 @@
 			  tr_unable_connect = {knitter_error, tr_unable_connect, []},
 			  tr_other = {knitter_error, tr_other, []},
 			  unexpected_message = {knitter_error, unexpected_message, []},
+			  start_conversation = {knitter_error, start_conversation, []},
 			  start_protocol  = {knitter_error, start_protocol, []},
 			  incomming_conversation = {knitter_error, incomming_conversation, []},
 			  other = {knitter_error, other, []}

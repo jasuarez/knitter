@@ -26,7 +26,7 @@ start(Agent_name) ->
     ProtoPID = start_protocol(List_protocols, Protocol, Agent_name),
     knitter ! {listenConnection, Protocol, ProtoPID},
     process_flag(trap_exit, true),
-    Control.
+    ok.
 
 
 start_ans(Config) ->
@@ -52,7 +52,7 @@ start_conversation(Conv_module, Local_agent, Remote_agent) ->
 	ConvPID when pid(ConvPID) ->
 	    ConvPID;
 	_ ->
-	    exit("unable to start conversation")
+	    unable_to_start
     end.
 
 
@@ -84,45 +84,62 @@ get_protocols(Config) ->
     end.
 
 
+get_protocol(Agent) ->
+    {ans_ok, Info} = knitter_ans:get_info(Agent),
+    case lists:keysearch(protocol, 1, Info) of
+	{value, {protocol, Protocol}} ->
+	    Protocol;
+	false ->
+	    exit("agent has no protocol")
+    end.
+
+
 server(State) ->
     receive
-%-------------------- GENERATE AN ERROR
+%%%-------------------- GENERATE AN ERROR
 	{error, Type, Parameters} ->
-	    spawn(?MODULE, execute_error_callback, [State#server_state.callbacks, Type, Parameters]),
+	    %%spawn(?MODULE, execute_error_callback, [State#server_state.callbacks, Type, Parameters]),
+	    %%spawn(?MODULE, fun() -> execute_error_callback(State#server_state.callbacks, Type, Parameters) end, []),
+	    execute_error_callback(State#server_state.callbacks, Type, Parameters),
 	    server(State);
-%-------------------- CHANGE ERROR CALLBACK
+%%%-------------------- CHANGE ERROR CALLBACK
 	{set_error_callback, Reason, Module, Function, User_params} ->
 	    server(State#server_state{callbacks = set_error_callback(State#server_state.callbacks, Reason, Module, Function, User_params)});
-%-------------------- SET THE PROCESS WAITING FOR INCOMMING CONVERSATIONS
+%%%-------------------- SET THE PROCESS WAITING FOR INCOMMING CONVERSATIONS
 	{setIncommingConvPID, New_incomming_conv} ->
 	    server(State#server_state{waiter_conv = New_incomming_conv});
-%-------------------- ADD A LISTENING CONNECTION
+%%%-------------------- ADD A LISTENING CONNECTION
 	{listenConnection, Protocol, ProtoPID} ->
 	    server(State#server_state{active_protocols = [{Protocol, ProtoPID} | State#server_state.active_protocols], conversations = [{State#server_state.name, Protocol} | State#server_state.conversations]});
-%-------------------- WE WANT LISTEN FOR INCOMMING CONNECTIONS
+%%%-------------------- WE WANT LISTEN FOR INCOMMING CONNECTIONS
 	{Client, wait_conv, Conv_module, Time} ->
 	    State#server_state.waiter_conv ! {wait_conv, Client, Conv_module, Time},
 	    server(State);
-%-------------------- CREATE A CONVERSATION
+%%%-------------------- CREATE A CONVERSATION
 	{From, createConversation, Conv, With_agent} ->
-	    ConvPID = start_conversation(Conv, State#server_state.name, With_agent),
-	    case lists:keysearch(With_agent, 1, State#server_state.conversations) of
-		{value, Some_conv} ->
-		    From ! {new_conversation, ConvPID},
-		    server(State#server_state{conversations = [{With_agent, element(2, Some_conv)} | State#server_state.conversations]});
-		false ->
-		    Protocol = get_protocol(With_agent),
-		    case lists:keymember(Protocol, 1, State#server_state.active_protocols) of
-			true ->
+	    case start_conversation(Conv, State#server_state.name, With_agent) of
+		unable_to_start ->
+		    knitter:error_start_conversation(Conv, "unable to start conversation"),
+		    server(State);
+		ConvPID ->	  
+		    case lists:keysearch(With_agent, 1, State#server_state.conversations) of
+			{value, Some_conv} ->
 			    From ! {new_conversation, ConvPID},
-			    server(State#server_state{conversations = [{With_agent, Protocol, ConvPID} | State#server_state.conversations]});
+			    server(State#server_state{conversations = [{With_agent, element(2, Some_conv)} | State#server_state.conversations]});
 			false ->
-			    ProtoPID = start_protocol (State#server_state.protocols, Protocol, State#server_state.name),
-			    From ! {new_conversation, ConvPID},
-			    server(State#server_state{active_protocols = [{Protocol, ProtoPID} | State#server_state.active_protocols], conversations = [{With_agent, Protocol, ConvPID} | State#server_state.conversations]})
+			    Protocol = get_protocol(With_agent),
+			    case lists:keymember(Protocol, 1, State#server_state.active_protocols) of
+				true ->
+				    From ! {new_conversation, ConvPID},
+				    server(State#server_state{conversations = [{With_agent, Protocol, ConvPID} | State#server_state.conversations]});
+				false ->
+				    ProtoPID = start_protocol (State#server_state.protocols, Protocol, State#server_state.name),
+				    From ! {new_conversation, ConvPID},
+				    server(State#server_state{active_protocols = [{Protocol, ProtoPID} | State#server_state.active_protocols], conversations = [{With_agent, Protocol, ConvPID} | State#server_state.conversations]})
+			    end
 		    end
 	    end;
-%-------------------- SEND A KQML MESSAGE TO PEER
+%%%-------------------- SEND A KQML MESSAGE TO PEER
 	{From, sendMessage, Message} ->
 	    {value, {Receiver, Protocol, From}} = lists:keysearch(From, 3, State#server_state.conversations),
 	    {value, {Protocol, ProtoPID}} = lists:keysearch(Protocol, 1, State#server_state.active_protocols),
@@ -139,7 +156,7 @@ server(State) ->
 				   State#server_state.expected_messages
 			   end,
 	    server(State#server_state{expected_messages = New_expected});
-%-------------------- RECEIVE A KQML MESSAGE FROM REMOTE AGENT
+%%%-------------------- RECEIVE A KQML MESSAGE FROM REMOTE AGENT
 	{ProtoPID, receiveMessage, Message} ->
 	    {ok, Sender} = get_param(Message, sender),
 	    case get_param(Message, 'in-reply-to') of
@@ -150,14 +167,18 @@ server(State) ->
 			    New_expected = lists:keydelete(ConvPID, 1, State#server_state.expected_messages),
 			    server(State#server_state{expected_messages = New_expected});
 			false ->
-			    %Una respuesta no puede ser comienzo de una conversación. Enviar un sorry.
+			    {value, Proto_name} = lists:keysearch(ProtoPID, 2, State#server_state.active_protocols),
+			    {value, Proto_mod} = lists:keysearch(Proto_name, 1, State#server_state.protocols),
+			    knitter:error_unexpected_message(Proto_mod, ProtoPID, Message, "a reply cannot start a conversation"),
 			    server(State)
 		    end;
 		undef ->
 		    State#server_state.waiter_conv ! {make_conv, State#server_state.name, Sender},
 		    receive
 			no_conversation ->
-			    %No se espera por ninguna conversación. Enviar un sorry.
+			    {value, Proto_name} = lists:keysearch(ProtoPID, 2, State#server_state.active_protocols),
+			    {value, Proto_mod} = lists:keysearch(Proto_name, 1, State#server_state.protocols),
+			    knitter:error_incomming_conversation(Proto_name, Proto_mod, Message, "anybody waits for a new conversation"),
 			    server(State);
 			{new_conversation, ConvPID} ->
 			    ConvPID ! {receiveMessage, Message},
@@ -166,7 +187,25 @@ server(State) ->
 			    server(State#server_state{conversations = New_conversations})
 		    end
 	    end;
-%-------------------- ANY OTHER ERLANG MESSAGE IS DISCARTED
+%%%-------------------- STOP THE KNITTER SYSTEM
+	stop ->
+	    knitter_ans:stop(),
+	    State#server_state.waiter_conv ! stop,
+	    Stop_conv = fun (Element) ->
+				case Element of
+				    {_, _, ConvPID} ->
+					ConvPID ! stop;
+				    _ ->
+					ok
+				end
+			end,
+	    lists:foreach(Stop_conv, State#server_state.conversations),
+	    Stop_prot = fun ({_, ProtoPID}) ->
+				ProtoPID ! stop
+			end,
+	    lists:foreach(Stop_prot, State#server_state.active_protocols),
+	    exit(normal);
+%%%-------------------- ANY OTHER ERLANG MESSAGE IS DISCARTED
 	_ ->
 	    server(State)
     end.
@@ -208,6 +247,12 @@ execute_error_callback(Callbacks, unexpected_message, Parameters) ->
     Params = Parameters ++ element(3, Callbacks#error_callbacks.unexpected_message),
     apply(Module, Function, Params);
 
+execute_error_callback(Callbacks, start_conversation, Parameters) ->
+    Module = element(1, Callbacks#error_callbacks.start_conversation),
+    Function = element(2, Callbacks#error_callbacks.start_conversation),
+    Params = Parameters ++ element(3, Callbacks#error_callbacks.start_conversation),
+    apply(Module, Function, Params);
+
 execute_error_callback(Callbacks, start_protocol, Parameters) ->
     Module = element(1, Callbacks#error_callbacks.start_protocol),
     Function = element(2, Callbacks#error_callbacks.start_protocol),
@@ -245,6 +290,9 @@ set_error_callback(Callbacks, tr_other, Module, Function, Params) ->
 set_error_callback(Callbacks, unexpected_message, Module, Function, Params) ->
     Callbacks#error_callbacks{unexpected_message = {Module, Function, Params}};
 
+set_error_callback(Callbacks, start_conversation, Module, Function, Params) ->
+    Callbacks#error_callbacks{start_conversation = {Module, Function, Params}};
+
 set_error_callback(Callbacks, start_protocol, Module, Function, Params) ->
     Callbacks#error_callbacks{start_protocol = {Module, Function, Params}};
 
@@ -253,16 +301,6 @@ set_error_callback(Callbacks, incomming_conversation, Module, Function, Params) 
 
 set_error_callback(Callbacks, other, Module, Function, Params) ->
     Callbacks#error_callbacks{other = {Module, Function, Params}}.
-
-
-get_protocol(Agent) ->
-    {ans_ok, Info} = knitter_ans:get_info(Agent),
-    case lists:keysearch(protocol, 1, Info) of
-	{value, {protocol, Protocol}} ->
-	    Protocol;
-	false ->
-	    exit("agent has no protocol")
-    end.
 
 
 wait_no_incomming_conv() ->
@@ -278,6 +316,8 @@ wait_no_incomming_conv() ->
 			   N
 		   end,
 	    wait_incomming_conv(Client, Conv_module, Time);
+	stop ->
+	    exit(normal);
 	_ ->
 	    wait_no_incomming_conv()
     end.
@@ -286,19 +326,26 @@ wait_no_incomming_conv() ->
 wait_incomming_conv(Client, Conv_module, Timeout) ->
     receive
 	{make_conv, Local_agent, Remote_agent} ->
-	    ConvPID = start_conversation(Conv_module, Local_agent, Remote_agent),
-	    Client ! {new_conversation, ConvPID},
-	    knitter ! {new_conversation, ConvPID},
+	    case start_conversation(Conv_module, Local_agent, Remote_agent) of
+		unable_to_start ->
+		    knitter:error_start_conversation(Conv_module, "unable to start conversation");
+		ConvPID ->
+		    Client ! {new_conversation, ConvPID},
+		    knitter ! {new_conversation, ConvPID}
+	    end,
 	    wait_no_incomming_conv();
 	{wait_conv, New_client, New_conv_module, New_timeout} ->
 	    Client ! {no_conversation, other_waiting},
 	    New_time = case New_timeout of
-		       N when N < 0 ->
-			   infinity;
-		       N ->
-			   N
-		   end,
-	    wait_incomming_conv(New_client, New_conv_module, New_time)
+			   N when N < 0 ->
+			       infinity;
+			   N ->
+			       N
+		       end,
+	    wait_incomming_conv(New_client, New_conv_module, New_time);
+	stop ->
+	    Client ! {no_conversation, system_end},
+	    exit(normal)
     after Timeout ->
 	    Client ! {no_conversation, timeout},
 	    wait_no_incomming_conv()

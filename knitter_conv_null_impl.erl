@@ -16,11 +16,11 @@ start(Local_agent, Remote_agent) ->
 
 server(State) ->
     receive
-%-------------------- SEND A KQML MESSAGE TO REMOTE AGENT
+%%%-------------------- SEND A KQML MESSAGE TO REMOTE AGENT
 	{From, sendMessage, Message} ->
 	    knitter:send_message(Message),
 	    server(State);
-%-------------------- GET NEXT KQML MESSAGE FROM REMOTE AGENT
+%%%-------------------- GET NEXT KQML MESSAGE FROM REMOTE AGENT
 	{From, getMessage, Id, Timeout} ->
 	    case queue:out(State#server_state.messages) of
 		{{value, Mesg}, New_QMesg} ->
@@ -40,8 +40,8 @@ server(State) ->
 			    New_QWaiting = q_in(WaitingPID, State#server_state.processes),
 			    server(State#server_state{messages = New_QMesg, processes = New_QWaiting})
 		    end
-		end;
-%-------------------- RECEIVE A KQML MESSAGE FROM REMOTE AGENT
+	    end;
+%%%-------------------- RECEIVE A KQML MESSAGE FROM REMOTE AGENT
 	{receiveMessage, Message} ->
 	    case q_out(State#server_state.processes) of
 		{{value, WaitingPID}, New_QWaiting} ->
@@ -51,7 +51,7 @@ server(State) ->
 		    New_QMesg = queue:in(Message, State#server_state.messages),
 		    server(State#server_state{messages = New_QMesg, processes = New_QWaiting})
 	    end;
-%-------------------- A WAITING PROCESS GOT TIRED OF BE A WAITING PROCESS
+%%%-------------------- A WAITING PROCESS GOT TIRED OF BE A WAITING PROCESS
 	{Waiting, killme} ->
 	    case q_out(Waiting, State#server_state.processes) of
 		{{value, Waiting}, New_QWaiting} ->
@@ -60,7 +60,14 @@ server(State) ->
 		{empty, New_QWaiting} ->
 		    server(State#server_state{processes = New_QWaiting})
 	    end;
-%-------------------- IGNORE OTHER ERLANG MESSAGES	    
+%%%-------------------- STOP THE CONVERSATION
+	stop ->
+	    Stop_waiters = fun (WaiterPID) ->
+				   WaiterPID ! stop
+			   end,
+	    lists:foreach(Stop_waiters, State#server_state.processes),
+	    exit(normal);
+%%%-------------------- IGNORE OTHER ERLANG MESSAGES	    
 	_ ->
 	    server(State)
     end.
@@ -91,13 +98,19 @@ q_out(Item, [H | T], Accum) ->
 start_waiting(Master, Client, Id, Timeout) ->
     receive
 	{Master, message, Message} ->
-	    Client ! {message, Id, Message}
+	    Client ! {message, Id, Message};
+	stop ->
+	    Client ! {no_message, Id, system_end},
+	    exit(normal)
     after Timeout ->
 	    Master ! {self(), killme},
 	    receive
 		{Master, killed} ->
 		    Client ! {no_message, Id, timeout};
 		{Master, message, Message} ->
-		    Client ! {message, Id, Message}
+		    Client ! {message, Id, Message};
+		stop  ->
+		    Client ! {no_message, Id, system_end},
+		    exit(normal)
 	    end
     end.
