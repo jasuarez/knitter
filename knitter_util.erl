@@ -16,7 +16,7 @@ get_param(KQML_mesg, Param) ->
 
 
 set_param(KQML_mesg, Param, New_value) ->
-    lists:keyreplace(Param, 1, KQML_mesg, New_value).
+    lists:keyreplace(Param, 1, KQML_mesg, {Param, New_value}).
 
 
 keysdelete(Key, N, TupleList) ->
