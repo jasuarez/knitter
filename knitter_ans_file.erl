@@ -1,7 +1,7 @@
 -module(knitter_ans_file).
--vc('$Id$').
--author('$Author$').
--vsn('$Revision$').
+-vc('$Id$ ').
+-author('$Author$ ').
+-vsn('$Revision$ ').
 
 -export([start/0]).
 -export([server/1]).

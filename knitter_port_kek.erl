@@ -1,7 +1,7 @@
 -module(knitter_port_kek).
--vc('$Id$').
--author('$Author$').
--vsn('$Revision$').
+-vc('$Id$ ').
+-author('$Author$ ').
+-vsn('$Revision$ ').
 
 -export([sendMessage/1]).
 

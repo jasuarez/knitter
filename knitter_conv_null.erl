@@ -1,7 +1,7 @@
 -module(knitter_conv_null).
--vc('$Id$').
--author('$Author$').
--vsn('$Revision$').
+-vc('$Id$ ').
+-author('$Author$ ').
+-vsn('$Revision$ ').
 
 -export([start/3]).
 -export([server/3]).

@@ -1,7 +1,7 @@
 -module(knitter_tr_simple).
--vc('$Id$').
--author('$Author$').
--vsn('$Revision$').
+-vc('$Id$ ').
+-author('$Author$ ').
+-vsn('$Revision$ ').
 
 -export([start/2]).
 -export([supervisor/2, listenIncoming/2, processMesg/1, attend/2]).

@@ -1,7 +1,7 @@
 -module(knitter_scanner).
--vc('$Id$').
--author('$Author$').
--vsn('$Revision$').
+-vc('$Id$ ').
+-author('$Author$ ').
+-vsn('$Revision$ ').
 
 -export([scan/1]).
 

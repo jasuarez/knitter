@@ -1,7 +1,7 @@
 -module(knitter_mesg).
--vc('$Id$').
--author('$Author$').
--vsn('$Revision$').
+-vc('$Id$ ').
+-author('$Author$ ').
+-vsn('$Revision$ ').
 
 -export([toString/1, toKQML/1]).
 

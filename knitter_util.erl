@@ -1,7 +1,7 @@
 -module(knitter_util).
--vc('$Id$').
--author('$Author$').
--vsn('$Revision$').
+-vc('$Id$ ').
+-author('$Author$ ').
+-vsn('$Revision$ ').
 
 -export([keysdelete/3, keyssearch/3]).
 -export([get_param/2, set_param/3]).
