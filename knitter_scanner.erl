@@ -5,32 +5,15 @@
 -export([scan/1]).
 
 
-scan(Input) -> scan(Input, [], 0).
+scan(Input) -> scan(Input, []).
 
 
-scan(Input, Tokens, BracketBalance) ->
-    case catch tokenize(io:get_chars(Input, '', 1)) of
-	{'(', Line, Value} ->
-	    scan(Input, [{'(', Line, Value} | Tokens], BracketBalance + 1);
-	{')', _, _} when BracketBalance < 1 ->
-	    exit({error, "Unbalanced brackets"});
-	{')', Line, Value} when BracketBalance == 1 ->
-	    lists:reverse([{'$eop', Line, '$eop'} | [{')', Line, Value} | Tokens]]);
-	{')', Line, Value} when BracketBalance > 1 ->
-	    scan(Input, [{')', Line, Value} | Tokens], BracketBalance - 1);
-	{'$eop', _, _} ->
-	    exit({error, "Unbalanced brackets"});
-	{'EXIT', _} ->
-	    exit({error, "Unbalanced brackets"});
-	Token ->
-	    scan(Input, [Token | Tokens], BracketBalance)
-    end.
+scan([Char | Rest], Tokens) ->
+    scan(Rest, [tokenize([Char]) | Tokens]);
+scan([], Tokens) ->
+    lists:reverse([{'$eop', 1, '$eop'} | Tokens]).
 
 
-tokenize(eof) ->
-    {'$eop', 1, '$eop'};
-tokenize([]) ->
-    {'$eop', 1, '$eop'};
 tokenize("(") ->
     {'(', 1, $(};
 tokenize(")") ->

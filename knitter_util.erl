@@ -4,7 +4,7 @@
 
 -export([start/0, server/1]).
 -export([getParam/2, delParam/2, setParam/3]).
--export([newID/1]).
+
 
 start () ->
     spawn(knitter_util, server, [1]).
@@ -43,11 +43,3 @@ delParam([], _, L) ->
 setParam(KQMLMesg, Param, Value) ->
     {_, K} = delParam(KQMLMesg, Param),
     {ok, [{Param, Value} | K]}.
-
-
-newID (PidUtilidades) ->
-    PidUtilidades ! {self(), newID},
-    receive
-	{newID, NewID} ->
-	    NewID
-    end.

@@ -2,39 +2,31 @@
 -author('$Author$').
 -vsn('$Revision$').
 
--export([ioToKQML/1]).
--export([start/1, server/1]).
-
--import(knitter_scanner, [scan/1]).
--import(knitter_parser, [parse/1]).
+-export([start/1, server/3]).
 
 
 
-start (MyName) ->
-    spawn(knitter, server, [MyName]).
-
-
-server (MyName) ->
-    receive
-	{FromAgent, createConversation, Conv, WithAgent} ->
-	    case catch apply(Conv, start, [MyName, WithAgent]) of
-		PidConv when pid(PidConv) ->
-		    FromAgent ! {ok, PidConv};
-		_ ->
-		    FromAgent ! {error, "Unable to create conversation"}
-	    end;
-	_ ->
-	    server(MyName)
+start (AgentName) ->
+    case file:consult('knitter.cfg') of
+	{ok, Ports} ->
+	    ListPorts = lists:map(fun({Protocol, Module}) -> {Protocol, apply(Module, start, [])} end, Ports),
+	    spawn(knitter, server, [AgentName, dict:new(), dict:from_list(ListPorts)]);
+	{error, _} ->
+	    exit ("start/1: unable to open configuration file")
     end.
 
 
-ioToKQML(FileInput) ->
-    case catch parse(scan(FileInput)) of
-	{ok, KQMLMesg} ->
-	    {ok, KQMLMesg};
-	
-	{error, _} ->
-	    {error, "Parse failed"};
+server (AgentName, Conversations, Ports) ->
+    receive
+	{From, createConversation, Conv, WithAgent} ->
+	    case catch apply(Conv, start, [AgentName, WithAgent]) of
+		PidConv when pid(PidConv) ->
+		    From ! {ok, PidConv},
+		    server(AgentName, dict:append({WithAgent, null}, PidConv, Conversations), Ports);
+		_ ->
+		    From ! {error, "Unable to create conversation"},
+		    server(AgentName, Conversations, Ports)
+	    end;
 	_ ->
-	    {error, "Unknown error"}
+	    server(AgentName, Conversations, Ports)
     end.
