@@ -41,7 +41,7 @@ server(Control, Process, Connections) ->
 	    server(Control, Process, [{AddressPort, ConnectionPID} | Connections]);
 %-------------------- SEND A MESSAGE TO PEER AGENT
 	{Control, sendMessage, Mesg} ->
-	    {ok, Receiver} = knitter_util:get_param(Mesg, receiver),
+	    {ok, Receiver} = knitter_mesg:get_param(Mesg, receiver),
 	    case lists:keysearch(Receiver, 3, Connections) of
 		{value, {_, ConnectionPID, Receiver}} ->
 		    send_message(ConnectionPID, Process, Mesg),
@@ -107,10 +107,10 @@ attend(Server, Socket) ->
 processMesg(Server) ->
     receive
 	{Server, toString, Mesg} ->
-	    Server ! {string, knitter_mesg:toString(Mesg)},
+	    Server ! {string, knitter_mesg_conv:kqml_to_string(Mesg)},
 	    processMesg(Server);
 	{Server, toKQML, Mesg} ->
-	    Server ! {kqml, knitter_mesg:toKQML(Mesg)},
+	    Server ! {kqml, knitter_mesg_conv:string_to_kqml(Mesg)},
 	    processMesg(Server);
 	_ ->
 	    processMesg(Server)

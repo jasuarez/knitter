@@ -6,7 +6,8 @@
 -export([start/1]).
 -export([server/6, wait_no_incomming_conv/1]).
 
--import(knitter_util, [keyssearch/3, get_param/2]).
+-import(knitter_util, [keyssearch/3]).
+-import(knitter_mesg, [get_param/2]).
 
 
 

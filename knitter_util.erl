@@ -3,22 +3,24 @@
 -author('$Author$ ').
 -vsn('$Revision$ ').
 
+-export([start/1]).
+-export([server/2]).
 -export([keysdelete/3, keyssearch/3]).
--export([get_param/2, set_param/3]).
 
 
 
-get_param(KQML_mesg, Param) ->
-    case lists:keysearch(Param, 1, KQML_mesg) of
-	{value, {Param, Value}} ->
-		{ok, Value};
-	 false ->
-		undef
-	end.
+start(Prefix) ->
+    spawn(knitter_util, server, [Prefix, 1]).
 
 
-set_param(KQML_mesg, Param, New_value) ->
-    lists:keyreplace(Param, 1, KQML_mesg, {Param, New_value}).
+server(Prefix, Counter) ->
+    receive
+	{From, get_new_id} ->
+	    From ! {new_id, Prefix ++ integer_to_list(Counter)},
+	    server(Prefix, Counter + 1);
+	_ ->
+	    server(Prefix, Counter)
+    end.
 
 
 keysdelete(Key, N, TupleList) ->
