@@ -2,13 +2,9 @@
 -author('$Author$').
 -vsn('$Revision$').
 
--export([start/0, start/1]).
+-export([start/1]).
 -export([supervisor/2, listenIncoming/2, processMesg/1, attend/2]).
 
-
-
-start() ->
-    start(self()).
 
 
 start(Control) ->
