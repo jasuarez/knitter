@@ -3,9 +3,9 @@
 -vsn('$Revision$').
 
 -export([start/1]).
--export([server/5]).
+-export([server/6]).
 
--import(knitter_util, [keyssearch/3]).
+-import(knitter_util, [keyssearch/3, get_param/2]).
 
 
 
@@ -16,7 +16,7 @@ start(Agent_name) ->
     {value, {protocol, Protocol}} = lists:keysearch(protocol, 1, Info),
     List_protocols = get_protocols(Config),
     ProtoPID = start_protocol(List_protocols, Protocol),
-    spawn(knitter, server, [Agent_name, AnsPID, List_protocols, [{Protocol, ProtoPID}], [{Agent_name, Protocol}]]).
+    spawn(knitter, server, [Agent_name, AnsPID, List_protocols, [{Protocol, ProtoPID}], [{Agent_name, Protocol}], []]).
 
 
 load_config() ->
@@ -66,99 +66,64 @@ start_protocol(Protocols, Name) ->
     end.
 
 
-server(Agent_name, Ans, All_protocols, Active_protocols, Conversations) ->
+server(Agent_name, Ans, All_protocols, Active_protocols, Conversations, Expected_messages) ->
     receive
+%-------------------- CREATE A CONVERSATION
+	{From, createConversation, Conv, With_agent} ->
+	    ConvPID = start_conversation(Conv, Agent_name, With_agent),
+	    case lists:keysearch(With_agent, 1, Conversations) of
+		{value, Some_conv} ->
+		    From ! {ok, ConvPID},
+		    server(Agent_name, Ans, All_protocols, Active_protocols, [{With_agent, element(2, Some_conv)} | Conversations], Expected_messages);
+		false ->
+		    Protocol = get_protocol(Ans, With_agent),
+		    case lists:keymember(Protocol, 1, Active_protocols) of
+			true ->
+			    From ! {ok, ConvPID},
+			    server(Agent_name, Ans, All_protocols, Active_protocols, [{With_agent, Protocol, ConvPID} | Conversations], Expected_messages);
+			false ->
+			    ProtoPID = start_protocol (All_protocols, Protocol),
+			    From ! {ok, ConvPID},
+			    server(Agent_name, Ans, All_protocols, [{Protocol, ProtoPID} | Active_protocols], [{With_agent, Protocol, ConvPID} | Conversations], Expected_messages)
+		    end
+	    end;
+%-------------------- SEND A KQML MESSAGE TO PEER
+	{From, sendMessage, Message} ->
+	    {value, {Receiver, Protocol, From}} = lists:keysearch(From, 3, Conversations),
+	    {value, {Protocol, ProtoPID}} = lists:keysearch(Protocol, 1, Active_protocols),
+	    ProtoPID ! {self(), sendMessage, Message},
+	    case get_param(Message, 'reply_with') of
+		{ok, Reply_id} ->
+		    case lists:keymember(From, 1, Expected_messages) of
+			true ->
+			    New_expected = lists:keyreplace(From, 1, Expected_messages, {From, Reply_id});
+			false ->
+			    New_expected = [{From, Reply_id} | Expected_messages]
+		    end;
+		undef ->
+		    New_expected = Expected_messages
+	    end,
+	    server(Agent_name, Ans, All_protocols, Active_protocols, Conversations, New_expected);
+%-------------------- ANY OTHER ERLANG MESSAGE IS DISCARTED
 	_ ->
-	    server(Agent_name, Ans, All_protocols, Active_protocols, Conversations)
+	    server(Agent_name, Ans, All_protocols, Active_protocols, Conversations, Expected_messages)
     end.
 
 
+get_protocol(Ans, Agent) ->
+    Info = get_agent_info(Ans, Agent),
+    case lists:keysearch(protocol, 1, Info) of
+	{value, {protocol, Protocol}} ->
+	    Protocol;
+	false ->
+	    exit("agent has no protocol")
+    end.
 
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%start(AgentName) ->
-%    case file:consult('knitter.cfg') of
-%	{ok, Config} ->
-%	    case lists:keysearch(ans, 1, Config) of
-%		{value, {ans, Module_ANS}} ->
-%		    AnsPID = spawn(Module_ANS, start, []),
-%		    AnsPID ! {self(), getAgentInfo, AgentName},
-%		    receive
-%			{ok, Info} ->
-%			    {value, {protocol, Protocol}} = lists:keysearch(protocol, 1, Info),
-%			    case keyssearch(protocol, 1, Config) of
-%				{value, Protocols} ->
-%				    case lists:keysearch(Protocol, 1, Protocols) of
-%					{value, {Protocol, Module_Protocol}} ->
-%					    spawn(knitter, server, [AgentName, AnsPID, [{AgentName, Protocol}], [{Protocol, spawn(Module_Protocol, start, [])}], []]);
-%					false ->
-%					    exit("start/1: unable to find a protocol module")
-%				    end;
-%				false ->
-%				    exit("start/1: there isn't any protocol defined")
-%			    end;
-%			{error, Reason} ->
-%			    exit("start/1: " ++ Reason)
-%		    end;
-%		false->
-%		    exit("start/1: no ANS module in configuration file")
-%	    end;
-%	{error, _} ->
-%	    exit("start/1: unable to open/read configuration file")
-%    end.
-%
-%
-%server(AgentName, Ans, Conversations, Protocols, ExpectedMessages) ->
-%    receive
-%	{From, createConversation, Conv, WithAgent} ->
-%	    case catch apply(Conv, start, [self(), AgentName, WithAgent]) of
-%		PidConv when pid(PidConv) ->
-%		    case lists:keysearch(WithAgent, 1, Conversations) of
-%			{value, AlreadyConv} ->
-%			    From ! {ok, PidConv},
-%			    server(AgentName, Ans, [AlreadyConv | Conversations], [Prot | Protocols], ExpectedMessages);
-%			false ->
-%			    AnsPID ! {self(), getAgentInfo, WithAgent},
-%			    receive
-%				{ok, Info} ->
-%				    {value, {protocol, Protocol}} = lists:keysearch(protocol, 1, Info),
-%				    case lists:keymember(Protocol, 1, Protocols) of
-%					{value, _} ->
-%					    From ! {ok, PidConv},
-%					    server(AgentName, Ans, [{WithAgent, Protocol} | Conversations], Protocols, ExpectedMessages);
-%					false ->
-%					    From ! {ok, PidConv},
-%					    server(AgentName, Ans, [{WithAgent, Protocol} | Conversations], [{Protocol, spawn()} | Protocols], ExpectedMessages)
-%	
-%		    ok
-%	    end
-%	_ ->
-%	    server(AgentName, Ans, Conversations, Protocols, ExpectedMessages)
-%    end.
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%start (AgentName) ->
-%    case file:consult('knitter.cfg') of
-%	{ok, Ports} ->
-%	    ListPorts = lists:map(fun({Protocol, Module}) -> {Protocol, apply(Module, start, [])} end, Ports),
-%	    spawn(knitter, server, [AgentName, dict:new(), dict:from_list(ListPorts)]);
-%	{error, _} ->
-%	    exit ("start/1: unable to open configuration file")
-%    end.
-%
-%
-%server (AgentName, Conversations, Ports) ->
-%    receive
-%	{From, createConversation, Conv, WithAgent} ->
-%	    case catch apply(Conv, start, [AgentName, WithAgent]) of
-%		PidConv when pid(PidConv) ->
-%		    From ! {ok, PidConv},
-%		    server(AgentName, dict:append({WithAgent, null}, PidConv, Conversations), Ports);
-%		_ ->
-%		    From ! {error, "Unable to create conversation"},
-%		    server(AgentName, Conversations, Ports)
-%	    end;
-%	_ ->
-%	    server(AgentName, Conversations, Ports)
-%    end.
+start_conversation(Conv_module, Local_agent, Remote_agent) ->
+    case catch apply(Conv_module, start, [self(), Local_agent, Remote_agent]) of
+	ConvPID when pid(ConvPID) ->
+	    ConvPID;
+	_ ->
+	    exit("unable to start conversation")
+    end.
