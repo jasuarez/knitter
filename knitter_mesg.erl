@@ -1,4 +1,5 @@
 -module(knitter_mesg).
+-vc('$Id$').
 -author('$Author$').
 -vsn('$Revision$').
 

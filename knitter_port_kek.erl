@@ -1,4 +1,5 @@
 -module(knitter_port_kek).
+-vc('$Id$').
 -author('$Author$').
 -vsn('$Revision$').
 

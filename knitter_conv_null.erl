@@ -1,4 +1,5 @@
 -module(knitter_conv_null).
+-vc('$Id$').
 -author('$Author$').
 -vsn('$Revision$').
 

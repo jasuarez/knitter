@@ -1,4 +1,5 @@
 -module(knitter_ans_file).
+-vc('$Id$').
 -author('$Author$').
 -vsn('$Revision$').
 
