@@ -6,6 +6,19 @@
 
 
 
+get_param(KQML_mesg, Param) ->
+    case lists:keysearch(Param, 1, KQML_mesg) of
+	{value, {Param, Value}} ->
+		{ok, Value};
+	 false ->
+		undef
+	end.
+
+
+set_param(KQML_mesg, Param, New_value) ->
+    lists:keyreplace(Param, 1, KQML_mesg, New_value).
+
+
 keysdelete(Key, N, TupleList) ->
     keysdelete(Key, N, TupleList, []).
 
