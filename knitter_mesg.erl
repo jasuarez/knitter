@@ -21,7 +21,12 @@ get_param(KQML_mesg, Param) ->
 
 
 set_param(KQML_mesg, Param, New_value) ->
-    lists:keyreplace(Param, 1, KQML_mesg, {Param, New_value}).
+    case lists:keymember(Param, 1, KQML_mesg) of
+	true ->
+	    lists:keyreplace(Param, 1, KQML_mesg, {Param, New_value});
+	false ->
+	    [{Param, New_value} | KQML_mesg]
+    end.
 
 
 set_param(KQML_mesg, Param) ->

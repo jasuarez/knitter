@@ -14,6 +14,7 @@ kqml_to_ascii(Mesg) ->
 
 kqml_to_ascii([{Perf, Value} | L], StrMesg) ->
     kqml_to_ascii(L, StrMesg ++ " :" ++ atom_to_list(Perf) ++ " " ++ Value);
+
 kqml_to_ascii([], StrMesg) ->
     StrMesg.
 

@@ -20,14 +20,6 @@ start(Agent) ->
     end.
 
 
-server(Options) ->
-    {value, {port, Port}} = lists:keysearch(port, 1, Options),
-    {ok, ListenSocket} = gen_tcp:listen(Port, []),
-    ListenPID = spawn_link(?MODULE, listenIncoming, [self(), ListenSocket]),
-    Mesg_convPID = spawn_link(?MODULE, server_mesg_conv, [self()]),
-    process_flag(trap_exit, true),
-    server(#server_state{listen = ListenPID, conversor = Mesg_convPID});
-
 server(State) when record(State, server_state) ->
     receive
 %-------------------- ADD A NEW CONNECTION TO LIST
@@ -46,17 +38,17 @@ server(State) when record(State, server_state) ->
 		    {ans_ok, Info} = knitter_ans:get_info(Receiver),
 		    {value, {address, Address}} = lists:keysearch(address, 1, Info),
 		    {value, {port, Port}} = lists:keysearch(port, 1, Info),
-		    case lists:keysearch({Address, Port}, 1, State#server_state.connections) of
-			{value, {_, Connection}} ->
-			    New_connections = lists:keyreplace(Connection, 2, State#server_state.connections, {{Address, Port}, Connection, Receiver}),
-			    Connection;
-			false ->
-			    Connection = make_connection(self(), Address, Port),
-			    New_connections = [{{Address, Port}, Connection, Receiver} | State#server_state.connections],
-			    Connection
-		    end,
-		    New_mesg_conv = send_message(Connection, State#server_state.conversor, Mesg),
-		    server(State#server_state{conversor = New_mesg_conv, connections = New_connections})
+		    {Conn, Conns} = case lists:keysearch({Address, Port}, 1, State#server_state.connections) of
+					{value, {_, Connection}} ->
+					    New_connections = lists:keyreplace(Connection, 2, State#server_state.connections, {{Address, Port}, Connection, Receiver}),
+					    {Connection, New_connections};
+					false ->
+					    Connection = make_connection(self(), Address, Port),
+					    New_connections = [{{Address, Port}, Connection, Receiver} | State#server_state.connections],
+					    {Connection, New_connections}
+				    end,
+		    New_mesg_conv = send_message(Conn, State#server_state.conversor, Mesg),
+		    server(State#server_state{conversor = New_mesg_conv, connections = Conns})
 	    end;
 %-------------------- WE HAVE RECEIVED A MESSAGE FROM AN AGENT
 	{Connection, receiveMessage, Mesg} ->
@@ -64,25 +56,33 @@ server(State) when record(State, server_state) ->
 	    receive
 		{kqml, KQMLMesg} ->
 		    knitter:receive_message(KQMLMesg),
-		    New_mesg_conv = State#server_state.conversor;
+		    server(State);
 		{'EXIT', Mesg_conv, _} ->
 		    %%Hubo un error al convertir el mensaje. Hay que notificarlo
-		    New_mesg_conv = spawn_link(?MODULE, server_mesg_conv, [self()])
-	    end,
-	    server(State#server_state{conversor = New_mesg_conv});
+		    New_mesg_conv = spawn_link(?MODULE, server_mesg_conv, [self()]),
+		    server(State#server_state{conversor = New_mesg_conv})
+	    end;
 %-------------------- A PROCESS HAS DIED
 	{'EXIT', From, Reason} ->
-	    case lists:keysearch(From, 2, State#server_state.connections) of
-		{value, {_, Connection}} ->
-		    New_connections = lists:keydelete(From, 2, State#server_state.connections);
-		false ->
-		    New_connections = State#server_state.connections
-	    end,
+	    New_connections = case lists:keysearch(From, 2, State#server_state.connections) of
+				  {value, {_, Connection}} ->
+				      lists:keydelete(From, 2, State#server_state.connections);
+				  false ->
+				      State#server_state.connections
+			      end,
 	    server(State#server_state{connections = New_connections});
 %-------------------- IGNORE ANY OTHER MESSAGES
 	_ ->
 	    server(State)
-    end.
+    end;
+
+server(Options) ->
+    {value, {port, Port}} = lists:keysearch(port, 1, Options),
+    {ok, ListenSocket} = gen_tcp:listen(Port, []),
+    ListenPID = spawn_link(?MODULE, listenIncoming, [self(), ListenSocket]),
+    Mesg_convPID = spawn_link(?MODULE, server_mesg_conv, [self()]),
+    process_flag(trap_exit, true),
+    server(#server_state{listen = ListenPID, conversor = Mesg_convPID}).
 
 
 listenIncoming(Server, LSocket) ->

@@ -19,7 +19,7 @@ start(Agent_name) ->
     Info = get_agent_info(Agent_name),
     {value, {protocol, Protocol}} = lists:keysearch(protocol, 1, Info),
     List_protocols = get_protocols(Config),
-    Control = spawn(?MODULE, server, #server_state{name = Agent_name, protocols = List_protocols}),
+    Control = spawn(?MODULE, server, [#server_state{name = Agent_name, protocols = List_protocols}]),
     register(knitter, Control),
     Incomming_conv = spawn_link(?MODULE, wait_no_incomming_conv, []),
     knitter ! {setIncommingConvPID, Incomming_conv},
@@ -84,8 +84,15 @@ get_protocols(Config) ->
     end.
 
 
-server(State) when record(State, server_state) ->
+server(State) ->
     receive
+%-------------------- GENERATE AN ERROR
+	{error, Type, Parameters} ->
+	    spawn(?MODULE, execute_error_callback, [State#server_state.callbacks, Type, Parameters]),
+	    server(State);
+%-------------------- CHANGE ERROR CALLBACK
+	{set_error_callback, Reason, Module, Function, User_params} ->
+	    server(State#server_state{callbacks = set_error_callback(State#server_state.callbacks, Reason, Module, Function, User_params)});
 %-------------------- SET THE PROCESS WAITING FOR INCOMMING CONVERSATIONS
 	{setIncommingConvPID, New_incomming_conv} ->
 	    server(State#server_state{waiter_conv = New_incomming_conv});
@@ -120,17 +127,17 @@ server(State) when record(State, server_state) ->
 	    {value, {Receiver, Protocol, From}} = lists:keysearch(From, 3, State#server_state.conversations),
 	    {value, {Protocol, ProtoPID}} = lists:keysearch(Protocol, 1, State#server_state.active_protocols),
 	    ProtoPID ! {sendMessage, Message},
-	    case get_param(Message, 'reply-with') of
-		{ok, Reply_id} ->
-		    case lists:keymember(From, 1, State#server_state.expected_messages) of
-			true ->
-			    New_expected = lists:keyreplace(From, 1, State#server_state.expected_messages, {From, {Receiver, Reply_id}});
-			false ->
-			    New_expected = [{From, {Receiver, Reply_id}} | State#server_state.expected_messages]
-		    end;
-		undef ->
-		    New_expected = State#server_state.expected_messages
-	    end,
+	    New_expected = case get_param(Message, 'reply-with') of
+			       {ok, Reply_id} ->
+				   case lists:keymember(From, 1, State#server_state.expected_messages) of
+				       true ->
+					   lists:keyreplace(From, 1, State#server_state.expected_messages, {From, {Receiver, Reply_id}});
+				       false ->
+					   [{From, {Receiver, Reply_id}} | State#server_state.expected_messages]
+				   end;
+			       undef ->
+				   State#server_state.expected_messages
+			   end,
 	    server(State#server_state{expected_messages = New_expected});
 %-------------------- RECEIVE A KQML MESSAGE FROM REMOTE AGENT
 	{ProtoPID, receiveMessage, Message} ->
@@ -163,6 +170,89 @@ server(State) when record(State, server_state) ->
 	_ ->
 	    server(State)
     end.
+
+
+execute_error_callback(Callbacks, ans_other, Parameters) ->
+    Module = element(1, Callbacks#error_callbacks.ans_other),
+    Function = element(2, Callbacks#error_callbacks.ans_other),
+    Params = Parameters ++ element(3, Callbacks#error_callbacks.ans_other),
+    apply(Module, Function, Params);
+
+execute_error_callback(Callbacks, tr_message_parse, Parameters) ->
+    Module = element(1, Callbacks#error_callbacks.tr_message_parse),
+    Function = element(2, Callbacks#error_callbacks.tr_message_parse),
+    Params = Parameters ++ element(3, Callbacks#error_callbacks.tr_message_parse),
+    apply(Module, Function, Params);
+
+execute_error_callback(Callbacks, tr_agent_info, Parameters) ->
+    Module = element(1, Callbacks#error_callbacks.tr_agent_info),
+    Function = element(2, Callbacks#error_callbacks.tr_agent_info),
+    Params = Parameters ++ element(3, Callbacks#error_callbacks.tr_agent_info),
+    apply(Module, Function, Params);
+
+execute_error_callback(Callbacks, tr_unable_connect, Parameters) ->
+    Module = element(1, Callbacks#error_callbacks.tr_unable_connect),
+    Function = element(2, Callbacks#error_callbacks.tr_unable_connect),
+    Params = Parameters ++ element(3, Callbacks#error_callbacks.tr_unable_connect),
+    apply(Module, Function, Params);
+
+execute_error_callback(Callbacks, tr_other, Parameters) ->
+    Module = element(1, Callbacks#error_callbacks.tr_other),
+    Function = element(2, Callbacks#error_callbacks.tr_other),
+    Params = Parameters ++ element(3, Callbacks#error_callbacks.tr_other),
+    apply(Module, Function, Params);
+
+execute_error_callback(Callbacks, unexpected_message, Parameters) ->
+    Module = element(1, Callbacks#error_callbacks.unexpected_message),
+    Function = element(2, Callbacks#error_callbacks.unexpected_message),
+    Params = Parameters ++ element(3, Callbacks#error_callbacks.unexpected_message),
+    apply(Module, Function, Params);
+
+execute_error_callback(Callbacks, start_protocol, Parameters) ->
+    Module = element(1, Callbacks#error_callbacks.start_protocol),
+    Function = element(2, Callbacks#error_callbacks.start_protocol),
+    Params = Parameters ++ element(3, Callbacks#error_callbacks.start_protocol),
+    apply(Module, Function, Params);
+
+execute_error_callback(Callbacks, incomming_conversation, Parameters) ->
+    Module = element(1, Callbacks#error_callbacks.incomming_conversation),
+    Function = element(2, Callbacks#error_callbacks.incomming_conversation),
+    Params = Parameters ++ element(3, Callbacks#error_callbacks.incomming_conversation),
+    apply(Module, Function, Params);
+
+execute_error_callback(Callbacks, other, Parameters) ->
+    Module = element(1, Callbacks#error_callbacks.other),
+    Function = element(2, Callbacks#error_callbacks.other),
+    Params = Parameters ++ element(3, Callbacks#error_callbacks.other),
+    apply(Module, Function, Params).
+
+
+set_error_callback(Callbacks, ans_other, Module, Function, Params) ->
+    Callbacks#error_callbacks{ans_other = {Module, Function, Params}};
+
+set_error_callback(Callbacks, tr_message_parse, Module, Function, Params) ->
+    Callbacks#error_callbacks{tr_message_parse = {Module, Function, Params}};
+
+set_error_callback(Callbacks, tr_agent_info, Module, Function, Params) ->
+    Callbacks#error_callbacks{tr_agent_info = {Module, Function, Params}};
+
+set_error_callback(Callbacks, tr_unable_connect, Module, Function, Params) ->
+    Callbacks#error_callbacks{tr_unable_connect = {Module, Function, Params}};
+
+set_error_callback(Callbacks, tr_other, Module, Function, Params) ->
+    Callbacks#error_callbacks{tr_other = {Module, Function, Params}};
+
+set_error_callback(Callbacks, unexpected_message, Module, Function, Params) ->
+    Callbacks#error_callbacks{unexpected_message = {Module, Function, Params}};
+
+set_error_callback(Callbacks, start_protocol, Module, Function, Params) ->
+    Callbacks#error_callbacks{start_protocol = {Module, Function, Params}};
+
+set_error_callback(Callbacks, incomming_conversation, Module, Function, Params) ->
+    Callbacks#error_callbacks{incomming_conversation = {Module, Function, Params}};
+
+set_error_callback(Callbacks, other, Module, Function, Params) ->
+    Callbacks#error_callbacks{other = {Module, Function, Params}}.
 
 
 get_protocol(Agent) ->

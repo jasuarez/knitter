@@ -3,7 +3,7 @@
 -author('$Author$ ').
 -vsn('$Revision$ ').
 
--export([]).
+-export([start/2, stop/1, send_message/2, receive_message/2]).
 
 
 
