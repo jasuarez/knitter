@@ -1,4 +1,4 @@
--module(knitter_ans_simple).
+-module(knitter_ans_file).
 -author('$Author$').
 -vsn('$Revision$').
 
