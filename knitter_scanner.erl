@@ -3,16 +3,26 @@
 -vsn('$Revision$').
 
 -export([scan/1]).
--export([tokenize/1]).
 
 
-scan(Input) -> scan(Input, []).
+scan(Input) -> scan(Input, [], 0).
 
-scan(Input, Tokens) ->
-    case tokenize(io:get_chars(Input, '', 1)) of
+scan(Input, Tokens, BracketBalance) ->
+    case catch tokenize(io:get_chars(Input, '', 1)) of
+	{'(', Line} ->
+	    scan(Input, [{'(', Line} | Tokens], BracketBalance + 1);
+	{')', Line} when BracketBalance < 1 ->
+	    exit({error, "Unbalanced brackets"});
+	{')', Line} when BracketBalance == 1 ->
+	    lists:reverse([{'$eop', Line} | [{')', Line} | Tokens]]);
+	{')', Line} when BracketBalance > 1 ->
+	    scan(Input, [{')', Line} | Tokens], BracketBalance - 1);
 	{'$eop', Line} ->
-	    lists:reverse([{'$eop', Line} | Tokens]);
-	Token -> scan(Input, [Token | Tokens])
+	    exit({error, "Unbalanced brackets"});
+	{'EXIT', _} ->
+	    exit({error, "Unbalanced brackets"});
+	Token ->
+	    scan(Input, [Token | Tokens], BracketBalance)
     end.
 
 tokenize(eof) ->
