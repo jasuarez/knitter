@@ -35,6 +35,8 @@ tokenize("#") ->
     {'#', 1};
 tokenize("\\") ->
     {backslash, 1};
+tokenize(":") ->
+    {':', 1};
 
 tokenize("<") ->
     {special, '<', 1};
@@ -64,8 +66,6 @@ tokenize("\$") ->
     {special, dollar, 1};
 tokenize("%") ->
     {special, '%', 1};
-tokenize(":") ->
-    {special, ':', 1};
 tokenize(".") ->
     {special, '.', 1};
 tokenize("!") ->
