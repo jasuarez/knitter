@@ -15,7 +15,7 @@ YFLAGS = ${FLAGS}
 %.erl: %.yrl
 	${YECC} ${YFLAGS} $<
 
-all: knitter_scanner.beam knitter_parser.beam
+all: knitter_scanner.beam knitter_parser.beam knitter.beam
 
 clean:
 	-${RM} *.beam

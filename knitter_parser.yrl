@@ -11,8 +11,8 @@ Terminals alphabetic numeric special anyascii whitespace apos backslash '(' ')' 
 Rootsymbol performative.
 Endsymbol '$eop'.
 
-performative	-> '(' word ')' 						: {knitter, [{'performative', '$2'}]}.
-performative	-> '(' word performative_1N ')'					: {knitter, [{'performative', '$2'} | '$3']}.
+performative	-> '(' word ')' 						: [{'performative', '$2'}].
+performative	-> '(' word performative_1N ')'					: [{'performative', '$2'} | '$3'].
 performative_1N	-> whitespace ':' word whitespace expression			: [{list_to_atom('$3'), '$5'}].
 performative_1N	-> whitespace ':' word whitespace wordQuotStr			: [{list_to_atom('$3'), '$5'}].
 performative_1N	-> performative_1N whitespace ':' word whitespace expression	: '$1' ++ [{list_to_atom('$4'), '$6'}].
