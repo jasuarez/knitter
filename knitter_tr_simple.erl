@@ -4,7 +4,7 @@
 -vsn('$Revision$ ').
 
 -export([start/2]).
--export([server/2, listenIncoming/2, server_mesg_conv/1, attend/2]).
+-export([server/2, listenIncoming/2, server_mesg_conv/1, attend/2, server_mesg_spool/3]).
 
 
 
@@ -73,8 +73,15 @@ server(Control, Mesg_conv, Connections) ->
 	    Mesg_conv ! {self(), toKQML, Mesg},
 	    receive
 		{kqml, KQMLMesg} ->
-		    Control ! {self(), receiveMessage, KQMLMesg}
+		    Control ! {self(), receiveMessage, KQMLMesg},
+		    New_mesg_conv = Mesg_conv;
+		{'EXIT', Mesg_conv, _} ->
+		    %%Hubo un error al convertir el mensaje. Hay que notificarlo
+		    New_mesg_conv = spawn_link(knitter_tr_simple, server_mesg_conv, [self()])
 	    end,
+	    server(Control, New_mesg_conv, Connections);
+%-------------------- A PROCESS HAS DIED
+	{'EXIT', From, Reason} ->
 	    server(Control, Mesg_conv, Connections);
 %-------------------- IGNORE ANY OTHER MESSAGES
 	_ ->
@@ -120,4 +127,62 @@ server_mesg_conv(Server) ->
 	    server_mesg_conv(Server);
 	_ ->
 	    server_mesg_conv(Server)
+    end.
+
+
+top(Queue) ->
+    case queue:to_list(Queue) of
+	[] ->
+	    empty;
+	[H | _] ->
+	    {value, H}
+    end.
+
+
+start_mesg_spool(Server, Socket) ->
+    spawn(knitter_tr_simple, server_mesg_spool_init, [Server, Socket]).
+
+
+server_mesg_spool_init(Server, Socket) ->
+    process_flag(trap_exit, true),
+    ControlPID = spawn_link(knitter_tr_simple, attend, [Server, Socket]),
+    ok = gen_tcp:controlling_process(Socket, ControlPID),
+    server_mesg_spool(Server, queue:new(), ControlPID).
+
+    
+server_mesg_spool(Server, Buffer, ConnectionPID) ->
+    receive
+	{Server, sendMessage, Message} ->
+	    New_buffer = queue:in(Message, Buffer),
+	    server_mesg_spool(Server, New_buffer, ConnectionPID);
+	{ConnectionPID, getMessage} ->
+	    case top(Buffer) of
+		{value, H} ->
+		    ConnectionPID ! {message, H},
+		    server_mesg_spool(Server, Buffer, ConnectionPID);
+		empty ->
+		    server_mesg_spool_wait(Server, Buffer, ConnectionPID)
+	    end;
+	{ConnectionPID, drop_and_get} ->
+	    {_, New_buffer} = queue:out(Buffer),
+	    case top(Buffer) of
+		{value, H} ->
+		    ConnectionPID ! {message, H},
+		    server_mesg_spool(Server, New_buffer, ConnectionPID);
+		empty ->
+		    server_mesg_spool_wait(Server, New_buffer, ConnectionPID)
+	    end;
+	{'EXIT', ConnectionPID, _} ->
+	    ok;%HAY QUE CORREGIR ESTO
+	_ ->
+	    server_mesg_spool(Server, Buffer, ConnectionPID)
+    end.
+
+
+server_mesg_spool_wait(Server, Buffer, ConnectionPID) ->
+    receive
+	{Server, sendMessage, Message} ->
+	    New_buffer = queue:in(Message, Buffer),
+	    ConnectionPID ! {message, Message},
+	    server_mesg_spool(Server, Buffer, ConnectionPID)
     end.
